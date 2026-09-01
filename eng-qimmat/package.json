@@ -1,0 +1,17 @@
+{
+  "name": "eng-qimmat",
+  "version": "1.0.0",
+  "description": "Eng Qimmat reytingi - pul to'lab reytingga chiqish tizimi",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "bot": "node bot.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-telegram-bot-api": "^0.66.0",
+    "node-fetch": "^3.3.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  }
+}

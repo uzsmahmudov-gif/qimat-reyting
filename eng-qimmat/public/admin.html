@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel</title>
+<style>
+  :root { --bg:#0f0f12; --card:#1a1a1f; --text:#f0f0f0; --muted:#8a8a92; --gold:#f5c542; --red:#e5484d; --green:#2fbf71; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 { color: var(--gold); }
+  .card { background: var(--card); border-radius: 14px; padding: 20px; margin-bottom: 20px; }
+  input { width:100%; padding:10px; margin:6px 0 14px; border-radius:8px; border:1px solid #333; background:#111; color:#fff; }
+  label { font-size: 0.85rem; color: var(--muted); }
+  button { padding:10px 16px; border:none; border-radius:8px; background:var(--gold); color:#111; font-weight:700; cursor:pointer; margin-right:8px;}
+  button.reject { background: var(--red); color: #fff; }
+  button.secondary { background:#2a2a30; color:#fff; }
+  .entry { border-bottom:1px solid #2a2a30; padding:14px 0; }
+  .entry:last-child { border:none; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
+  .status { font-size:0.75rem; padding:2px 8px; border-radius:20px; }
+  .status.pending { background:#3a3a10; color:#f5c542; }
+  .status.approved { background:#0f3a20; color:var(--green); }
+  .status.rejected { background:#3a1010; color:var(--red); }
+  #loginBox { max-width:320px; margin:80px auto; }
+</style>
+</head>
+<body>
+
+<div id="loginBox" class="card">
+  <h1>Admin kirish</h1>
+  <label>Parol</label>
+  <input type="password" id="pw">
+  <button onclick="login()">Kirish</button>
+  <div id="loginErr" style="color:var(--red)"></div>
+</div>
+
+<div class="container" id="panel" style="display:none">
+  <h1>👑 Admin Panel</h1>
+
+  <div class="card">
+    <h3>Narxlar</h3>
+    <label>Standart</label><input id="standard_price" type="number">
+    <label>Klassik</label><input id="classic_price" type="number">
+    <label>Premium</label><input id="premium_price" type="number">
+    <label>Edition narxi</label><input id="edition_price" type="number">
+    <label>Jami edition soni</label><input id="editions_total" type="number">
+    <button onclick="saveSettings()">Saqlash</button>
+  </div>
+
+  <div class="card">
+    <h3>To'lovlar (yangilari yuqorida)</h3>
+    <div id="entries">Yuklanmoqda...</div>
+  </div>
+</div>
+
+<script>
+let PW = localStorage.getItem('admin_pw') || '';
+
+async function login() {
+  const pw = document.getElementById('pw').value;
+  const res = await fetch('/api/admin/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ password: pw })
+  });
+  if (res.ok) {
+    PW = pw;
+    localStorage.setItem('admin_pw', pw);
+    showPanel();
+  } else {
+    document.getElementById('loginErr').textContent = "Noto'g'ri parol";
+  }
+}
+
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, {
+    'Content-Type': 'application/json',
+    'x-admin-password': PW
+  });
+  const res = await fetch(path, opts);
+  if (res.status === 401) { localStorage.removeItem('admin_pw'); location.reload(); }
+  return res.json();
+}
+
+async function showPanel() {
+  document.getElementById('loginBox').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  const settings = await api('/api/admin/entries').then(() => fetch('/api/settings').then(r => r.json()));
+  for (const k of ['standard_price','classic_price','premium_price','edition_price','editions_total']) {
+    document.getElementById(k).value = settings[k];
+  }
+  loadEntries();
+}
+
+async function saveSettings() {
+  const body = {};
+  for (const k of ['standard_price','classic_price','premium_price','edition_price','editions_total']) {
+    body[k] = Number(document.getElementById(k).value);
+  }
+  await api('/api/admin/settings', { method:'POST', body: JSON.stringify(body) });
+  alert('Saqlandi ✅');
+}
+
+async function loadEntries() {
+  const entries = await api('/api/admin/entries');
+  const el = document.getElementById('entries');
+  if (!entries.length) { el.innerHTML = '<div style="color:var(--muted)">Hali to\'lov yo\'q</div>'; return; }
+  el.innerHTML = entries.map(e => `
+    <div class="entry">
+      <div class="row">
+        <div>
+          <b>${escapeHtml(e.name)}</b> ${e.username ? escapeHtml(e.username) : ''}<br>
+          <span style="color:var(--gold)">${e.amount.toLocaleString('uz-UZ')} so'm</span>
+          ${e.edition_number ? ` · Edition #${e.edition_number}` : ''}
+          <span class="status ${e.status}">${e.status}</span>
+        </div>
+        ${e.status === 'pending' ? `
+          <div>
+            <button onclick="approve(${e.id}, false)">✅ Tasdiqlash</button>
+            <button class="secondary" onclick="approve(${e.id}, true)">✅ + Edition</button>
+            <button class="reject" onclick="reject(${e.id})">❌ Rad etish</button>
+          </div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function approve(id, assignEdition) {
+  await api(`/api/admin/entries/${id}/approve`, { method:'POST', body: JSON.stringify({ assign_edition: assignEdition }) });
+  loadEntries();
+}
+async function reject(id) {
+  await api(`/api/admin/entries/${id}/reject`, { method:'POST' });
+  loadEntries();
+}
+function escapeHtml(s) {
+  const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML;
+}
+
+if (PW) showPanel();
+</script>
+</body>
+</html>
